@@ -1,0 +1,20 @@
+[project]
+name = "gym-scheduler"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Avital Abraham", email = "avitalabraham2005@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "gradio>=6.31.0",
+    "typer>=0.29.1",
+]
+
+[project.scripts]
+gym-scheduler = "gym_scheduler:main"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
