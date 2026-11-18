@@ -10,30 +10,62 @@ try:
 except ImportError:
     from models import GymClass, TimeSlot, Trainer
 
+# נתוני דוגמה בזיכרון
+_trainers: dict[str, Trainer] = {
+    "נועה": Trainer(
+        name="נועה",
+        classes=["פילאטיס", "יוגה"],
+        availability={TimeSlot("ראשון", "בוקר"), TimeSlot("שלישי", "בוקר")},
+    ),
+    "מיכל": Trainer(
+        name="מיכל",
+        classes=["זומבה", "אירובי"],
+        availability={TimeSlot("שני", "ערב"), TimeSlot("רביעי", "ערב")},
+    ),
+    "שירה": Trainer(
+        name="שירה",
+        classes=["פילאטיס", "עיצוב"],
+        availability={TimeSlot("ראשון", "ערב"), TimeSlot("חמישי", "בוקר")},
+    ),
+}
+
+_schedule: list[GymClass] = [
+    GymClass("פילאטיס", TimeSlot("ראשון", "בוקר"), "09:00", "נועה"),
+    GymClass("עיצוב", TimeSlot("ראשון", "ערב"), "19:00", "שירה"),
+    GymClass("זומבה", TimeSlot("שני", "ערב"), "20:00", "מיכל"),
+    GymClass("יוגה", TimeSlot("שלישי", "בוקר"), "08:00", "נועה"),
+    GymClass("אירובי", TimeSlot("רביעי", "ערב"), "19:30", "מיכל"),
+    GymClass("פילאטיס", TimeSlot("רביעי", "בוקר"), "10:00", "נועה"),
+    GymClass("עיצוב", TimeSlot("חמישי", "בוקר"), "09:30", "שירה"),
+]
+
 
 def get_trainer_names() -> list[str]:
     """שולף את שמות כל המאמנות הקיימות במערכת לצורך הצגה בתפריט בחירה בממשק."""
-    pass
+    return list(_trainers.keys())
 
 
 def get_trainer(name: str) -> Trainer:
     """שולף אובייקט מאמנת מלא לפי שמה.
 
-    מעלה KeyError או מחזיר שגיאה אם המאמנת אינה קיימת.
+    מעלה KeyError אם המאמנת אינה קיימת.
     """
-    pass
+    return _trainers[name]
 
 
 def get_trainers() -> list[Trainer]:
     """שולף את רשימת כל המאמנות במערכת על כל נתוניהן."""
-    pass
+    return list(_trainers.values())
 
 
 def set_availability(name: str, slots: list[TimeSlot]) -> None:
     """מעדכן ומחליף את כל משבצות הזמינות השבועיות של מאמנת ספציפית."""
-    pass
+    if name in _trainers:
+        _trainers[name].availability = set(slots)
+    else:
+        raise KeyError(f"מאמנת בשם '{name}' אינה קיימת במערכת.")
 
 
 def get_schedule() -> list[GymClass]:
     """שולף את רשימת כל השיעורים הקיימים בלוח השיעורים השבועי."""
-    pass
+    return list(_schedule)
