@@ -9,6 +9,8 @@ authors = [
 requires-python = ">=3.10"
 dependencies = [
     "gradio>=6.31.0",
+    "openai>=3.55.1",
+    "python-dotenv>=1.2.4",
     "typer>=0.29.1",
 ]
 
