@@ -1,7 +1,7 @@
 """רכיב פענוח זמינות מאמנות בשפה טבעית עם LLM ו-fallback מבוסס חוקים.
 
 מודול זה מהווה גשר בין טקסט חופשי של מאמנת לבין משבצות זמן מובנות (TimeSlot)
-ומנסה תחילה לפענח את ההודעה באמצעות LLM. במקרה של כשל או פלט ריק,
+ומנסה תחילה לפענח את ההודעה באמצעות LLM. אם הקריאה ל-LLM נכשלת,
 הפענוח הדטרמיניסטי בעברית משמש כ-fallback.
 """
 
@@ -179,11 +179,18 @@ def _parse_availability_rules(message: str) -> list[TimeSlot]:
 
 
 def parse_availability(message: str) -> list[TimeSlot]:
-    """מנסה תחילה פענוח LLM, וחוזר לחוקים המקומיים אם הוא נכשל או מחזיר ריק."""
-    try:
-        llm_slots = availability_llm.parse_availability(message)
-    except Exception as exc:
-        print(f"[availability_ai] שגיאת LLM, מעבר לפענוח לפי חוקים: {type(exc).__name__}: {exc}")
-        llm_slots = []
+    """מנסה תחילה פענוח LLM, ואם הקריאה נכשלת חוזר לפענוח לפי חוקים ומדפיס איזו שיטה שימשה."""
+    if not message or not message.strip():
+        print("[availability_ai] שיטת פענוח: חוקים (הודעה ריקה)")
+        return []
 
-    return llm_slots if llm_slots else _parse_availability_rules(message)
+    try:
+        slots = availability_llm.parse_availability(message)
+        print("[availability_ai] שיטת פענוח: LLM")
+        return slots
+    except Exception as exc:
+        print(
+            f"[availability_ai] קריאת LLM נכשלה ({type(exc).__name__}: {exc}) – "
+            "שיטת פענוח: חוקים (fallback)"
+        )
+        return _parse_availability_rules(message)

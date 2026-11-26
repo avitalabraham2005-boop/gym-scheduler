@@ -1,52 +1,37 @@
-"""רכיב LLM לפענוח זמינות מאמנות בשפה טבעית דרך API תואם OpenAI."""
+"""רכיב LLM לפענוח זמינות מאמנות בשפה טבעית באמצעות לקוח ה-LLM המרכזי."""
 
 import json
-import os
-from pathlib import Path
-from dotenv import load_dotenv
-from openai import OpenAI
 
 try:
+    from source.llm_client import MODEL, get_client
     from source.models import DAYS, PARTS_OF_DAY, TimeSlot
 except ImportError:
+    from llm_client import MODEL, get_client
     from models import DAYS, PARTS_OF_DAY, TimeSlot
 
-PROVIDER: str = "gemini"
-MODEL: str = "gemini-3.5-flash"
+DEVELOPER_INSTRUCTIONS: str = f"""אתה רכיב AI במערכת ניהול ושיבוץ למכון כושר.
 
-_PROVIDER_CONFIG: dict[str, tuple[str, str]] = {
-    "gemini": (
-        "GEMINI_API_KEY",
-        "https://generativelanguage.googleapis.com/v1beta/openai/",
-    ),
-    "openai": ("OPENAI_API_KEY", "https://api.openai.com/v1"),
-}
-_API_KEY_ENV, _BASE_URL = _PROVIDER_CONFIG[PROVIDER]
+המשימה:
+לפענח הודעות זמינות בעברית חופשית שנכתבו על ידי מאמנות, ולחלץ מהן את משבצות הזמן שבהן המאמנת זמינה לאמן.
 
-# טעינת מפתח ה-API מתוך קובץ .env (בתיקיית הפרויקט או בתיקיות אב)
-env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=env_path)
-if not os.getenv(_API_KEY_ENV):
-    load_dotenv()
-
-DEVELOPER_INSTRUCTIONS: str = f"""אתה מנוע AI למערכת ניהול ושיבוץ במכון כושר.
-תפקידך: לפענח הודעות זמינות בשפה חופשית שנכתבו על ידי מאמנות, ולחלץ מתוכן רשימה מובנית של משבצות זמן שבהן המאמנת זמינה לאמן.
-
-1. רשימת ימים תקינים:
+רשימת הימים התקינים (ראשון עד שישי):
 {', '.join(DAYS)}
 
-2. רשימת חלקי יום תקינים:
-{', '.join(PARTS_OF_DAY)}
+חלקי היום וטווחי השעות שלהם:
+- בוקר: 06-12
+- צהריים: 12-17
+- ערב: 17-22
+בשדה "part" יש להחזיר אך ורק אחד מהערכים: {', '.join(PARTS_OF_DAY)}.
 
-3. כלל מנחה ליום ללא ציון חלק ביום:
-אם המאמנת מציינת יום ללא פירוט חלק ביום (למשל: "זמינה ברביעי", "פנויה בראשון"), יש לכלול את כל חלקי אותו יום: בוקר, צהריים, ערב.
+כללים:
+1. יום בלי ציון חלק יום משמעותו כל היום – יש לכלול עבורו את כל שלושת חלקי היום (בוקר, צהריים, ערב).
+2. ביטויי החרגה כגון "חוץ מ..." או "למעט..." מוציאים את הימים או חלקי היום שהוחרגו מתוך הטווח שצוין (למשל "כל השבוע" פירושו ראשון עד שישי בכל חלקי היום, ללא המשבצות שהוחרגו).
+3. אם מצוינת שעה, יש לשייך אותה לחלק היום המתאים (בוקר 06-12, צהריים 12-17, ערב 17-22).
+4. אם אין זמינות בהודעה (או שההודעה אינה מתארת זמינות), יש להחזיר רשימה ריקה: [].
 
-4. פורמט הפלט:
-עליך להחזיר אך ורק אובייקט JSON תקין במבנה הבא:
-{{"slots": [{{"day": "<שם_יום>", "part": "<חלק_ביום>"}}]}}
-
-אם ההודעה אינה מכילה מידע על זמינות או שלא ניתן לפענח ימים, החזר:
-{{"slots": []}}
+פורמט פלט:
+החזר JSON תקין בלבד (ללא טקסט נוסף וללא סימני Markdown), כרשימה של אובייקטים שכל אחד מהם מכיל את השדות "day" ו-"part" בלבד:
+[{{"day": "<יום>", "part": "<חלק_ביום>"}}]
 """
 
 FEW_SHOT_EXAMPLES: list[dict[str, str]] = [
@@ -57,12 +42,10 @@ FEW_SHOT_EXAMPLES: list[dict[str, str]] = [
     {
         "role": "assistant",
         "content": json.dumps(
-            {
-                "slots": [
-                    {"day": "רביעי", "part": "בוקר"},
-                    {"day": "שלישי", "part": "ערב"},
-                ]
-            },
+            [
+                {"day": "רביעי", "part": "בוקר"},
+                {"day": "שלישי", "part": "ערב"},
+            ],
             ensure_ascii=False,
         ),
     },
@@ -73,71 +56,105 @@ FEW_SHOT_EXAMPLES: list[dict[str, str]] = [
     {
         "role": "assistant",
         "content": json.dumps(
-            {
-                "slots": [
-                    {"day": "ראשון", "part": "בוקר"},
-                    {"day": "ראשון", "part": "צהריים"},
-                    {"day": "ראשון", "part": "ערב"},
-                    {"day": "שני", "part": "ערב"},
-                ]
-            },
+            [
+                {"day": "ראשון", "part": "בוקר"},
+                {"day": "ראשון", "part": "צהריים"},
+                {"day": "ראשון", "part": "ערב"},
+                {"day": "שני", "part": "ערב"},
+            ],
             ensure_ascii=False,
         ),
+    },
+    {
+        "role": "user",
+        "content": "זמינה כל השבוע בבוקר חוץ משני ושישי",
+    },
+    {
+        "role": "assistant",
+        "content": json.dumps(
+            [
+                {"day": "ראשון", "part": "בוקר"},
+                {"day": "שלישי", "part": "בוקר"},
+                {"day": "רביעי", "part": "בוקר"},
+                {"day": "חמישי", "part": "בוקר"},
+            ],
+            ensure_ascii=False,
+        ),
+    },
+    {
+        "role": "user",
+        "content": "השבוע אני בחופשה ולא זמינה בכלל",
+    },
+    {
+        "role": "assistant",
+        "content": "[]",
     },
 ]
 
 
-def parse_availability(message: str) -> list[TimeSlot]:
-    """מפענח הודעת טקסט חופשית של מאמנת לרשימת משבצות זמן (TimeSlot) באמצעות קריאה ל-LLM.
+def _parse_json_list(content: str) -> list[object]:
+    """מנקה גדרות קוד במידת הצורך ומפענח את תשובת המודל כרשימת JSON."""
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
 
-    משתמש במודל ובספק שמוגדרים בראש הקובץ דרך Chat Completions API תואם OpenAI.
-    במידה והפענוח נכשל או שהתרחשה שגיאת תקשורת, מוחזרת רשימה ריקה כדי למנוע קריסה.
-    """
+    data = json.loads(cleaned)
+    if not isinstance(data, list):
+        raise ValueError("Expected JSON list of slot objects from LLM")
+    return data
+
+
+def parse_availability(message: str) -> list[TimeSlot]:
+    """מפענח הודעת טקסט חופשית של מאמנת לרשימת משבצות זמן (TimeSlot) באמצעות קריאה ל-LLM."""
     if not message or not message.strip():
         return []
 
-    try:
-        api_key = os.getenv(_API_KEY_ENV)
-        if not api_key:
-            raise RuntimeError(f"Missing API key environment variable: {_API_KEY_ENV}")
-        client = OpenAI(api_key=api_key, base_url=_BASE_URL)
+    client = get_client()
+    messages = [
+        {"role": "developer", "content": DEVELOPER_INSTRUCTIONS},
+        *FEW_SHOT_EXAMPLES,
+        {"role": "user", "content": message.strip()},
+    ]
 
-        messages = [
-            {"role": "developer", "content": DEVELOPER_INSTRUCTIONS},
-            *FEW_SHOT_EXAMPLES,
-            {"role": "user", "content": message.strip()},
-        ]
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=messages,
+        temperature=0,
+        seed=42,
+    )
 
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            temperature=0,
-            response_format={"type": "json_object"},
+    usage = response.usage
+    if usage is not None:
+        input_tokens = usage.prompt_tokens or 0
+        output_tokens = usage.completion_tokens or 0
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached_tokens = (getattr(details, "cached_tokens", 0) if details else 0) or 0
+        print(
+            f"[availability_llm] tokens - input: {input_tokens}, "
+            f"output: {output_tokens}, cached: {cached_tokens}"
         )
 
-        content = response.choices[0].message.content
-        if not content:
-            return []
+    content = response.choices[0].message.content
+    if not content:
+        raise RuntimeError("Empty response content from LLM")
 
-        data = json.loads(content)
-        raw_slots = data.get("slots", [])
-        if not isinstance(raw_slots, list):
-            return []
+    raw_slots = _parse_json_list(content)
+    slots: list[TimeSlot] = []
+    seen: set[TimeSlot] = set()
+    for item in raw_slots:
+        if not isinstance(item, dict):
+            raise ValueError(f"Expected object in JSON list, got {type(item).__name__}")
+        day = item.get("day")
+        part = item.get("part")
+        if day in DAYS and part in PARTS_OF_DAY:
+            slot = TimeSlot(day=day, part=part)
+            if slot not in seen:
+                seen.add(slot)
+                slots.append(slot)
 
-        slots: list[TimeSlot] = []
-        for item in raw_slots:
-            if not isinstance(item, dict):
-                continue
-            day = item.get("day")
-            part = item.get("part")
-            if day in DAYS and part in PARTS_OF_DAY:
-                slot = TimeSlot(day=day, part=part)
-                if slot not in slots:
-                    slots.append(slot)
-
-        return slots
-
-    except Exception as exc:
-        # הדפסת השגיאה לטרמינל והחזרת תוצאה ריקה כדי למנוע קריסת הממשק
-        print(f"[availability_llm] שגיאה בפענוח הזמינות: {type(exc).__name__}: {exc}")
-        return []
+    return slots
