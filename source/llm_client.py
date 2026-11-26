@@ -10,10 +10,11 @@ load_dotenv(dotenv_path=_ENV_PATH)
 load_dotenv()
 
 GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
-GEMINI_MODEL: str = "gemini-3.5-flash"
+GEMINI_MODEL: str = "gemini-3.6-flash-lite"
 OPENAI_MODEL: str = "gpt-5.6-luna"
 
-PROVIDER: str = (os.getenv("LLM_PROVIDER") or "gemini").strip().lower()
+_RAW_PROVIDER: str = (os.getenv("LLM_PROVIDER") or "gemini").strip().lower()
+PROVIDER: str = "openai" if _RAW_PROVIDER == "openai" else "gemini"
 
 if PROVIDER == "openai":
     MODEL: str = OPENAI_MODEL

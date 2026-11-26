@@ -1,12 +1,13 @@
 """רכיב LLM לפענוח זמינות מאמנות בשפה טבעית באמצעות לקוח ה-LLM המרכזי."""
 
 import json
+from openai import APIStatusError
 
 try:
-    from source.llm_client import MODEL, get_client
+    from source.llm_client import MODEL, PROVIDER, get_client
     from source.models import DAYS, PARTS_OF_DAY, TimeSlot
 except ImportError:
-    from llm_client import MODEL, get_client
+    from llm_client import MODEL, PROVIDER, get_client
     from models import DAYS, PARTS_OF_DAY, TimeSlot
 
 DEVELOPER_INSTRUCTIONS: str = f"""אתה רכיב AI במערכת ניהול ושיבוץ למכון כושר.
@@ -115,18 +116,35 @@ def parse_availability(message: str) -> list[TimeSlot]:
         return []
 
     client = get_client()
+    instruction_role = "developer" if PROVIDER == "openai" else "system"
     messages = [
-        {"role": "developer", "content": DEVELOPER_INSTRUCTIONS},
+        {"role": instruction_role, "content": DEVELOPER_INSTRUCTIONS},
         *FEW_SHOT_EXAMPLES,
         {"role": "user", "content": message.strip()},
     ]
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=messages,
-        temperature=0,
-        seed=42,
-    )
+    request_kwargs: dict[str, object] = {
+        "model": MODEL,
+        "messages": messages,
+        "temperature": 0,
+    }
+    if PROVIDER == "openai":
+        request_kwargs["seed"] = 42
+
+    try:
+        response = client.chat.completions.create(**request_kwargs)
+    except APIStatusError as exc:
+        response_text = exc.response.text if getattr(exc, "response", None) is not None else ""
+        full_error = response_text or (
+            json.dumps(exc.body, ensure_ascii=False) if exc.body is not None else str(exc)
+        )
+        print(
+            f"[availability_llm] שגיאת שרת מלאה ({type(exc).__name__}, status={exc.status_code}):\n{full_error}"
+        )
+        raise
+    except Exception as exc:
+        print(f"[availability_llm] שגיאה בקריאה ל-LLM ({type(exc).__name__}): {exc}")
+        raise
 
     usage = response.usage
     if usage is not None:
