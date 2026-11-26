@@ -1,8 +1,4 @@
-"""רכיב בינה מלאכותית לקליטת זמינות מאמנות בשפה טבעית באמצעות OpenAI LLM.
-
-קובץ זה נשמר לשימוש עתידי כאשר יהיה קרדיט פעיל ב-OpenAI,
-ומממש פענוח של טקסט חופשי למשבצות זמן מובנות דרך ה-Chat Completions API.
-"""
+"""רכיב LLM לפענוח זמינות מאמנות בשפה טבעית דרך API תואם OpenAI."""
 
 import json
 import os
@@ -15,13 +11,23 @@ try:
 except ImportError:
     from models import DAYS, PARTS_OF_DAY, TimeSlot
 
+PROVIDER: str = "gemini"
+MODEL: str = "gemini-3.5-flash"
+
+_PROVIDER_CONFIG: dict[str, tuple[str, str]] = {
+    "gemini": (
+        "GEMINI_API_KEY",
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
+    ),
+    "openai": ("OPENAI_API_KEY", "https://api.openai.com/v1"),
+}
+_API_KEY_ENV, _BASE_URL = _PROVIDER_CONFIG[PROVIDER]
+
 # טעינת מפתח ה-API מתוך קובץ .env (בתיקיית הפרויקט או בתיקיות אב)
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
-if not os.getenv("OPENAI_API_KEY"):
+if not os.getenv(_API_KEY_ENV):
     load_dotenv()
-
-MODEL: str = "gpt-5.6-luna"
 
 DEVELOPER_INSTRUCTIONS: str = f"""אתה מנוע AI למערכת ניהול ושיבוץ במכון כושר.
 תפקידך: לפענח הודעות זמינות בשפה חופשית שנכתבו על ידי מאמנות, ולחלץ מתוכן רשימה מובנית של משבצות זמן שבהן המאמנת זמינה לאמן.
@@ -84,15 +90,17 @@ FEW_SHOT_EXAMPLES: list[dict[str, str]] = [
 def parse_availability(message: str) -> list[TimeSlot]:
     """מפענח הודעת טקסט חופשית של מאמנת לרשימת משבצות זמן (TimeSlot) באמצעות קריאה ל-LLM.
 
-    משתמש ב-Chat Completions API של OpenAI עם המודל gpt-5.6-luna.
+    משתמש במודל ובספק שמוגדרים בראש הקובץ דרך Chat Completions API תואם OpenAI.
     במידה והפענוח נכשל או שהתרחשה שגיאת תקשורת, מוחזרת רשימה ריקה כדי למנוע קריסה.
     """
     if not message or not message.strip():
         return []
 
     try:
-        api_key = os.getenv("OPENAI_API_KEY")
-        client = OpenAI(api_key=api_key)
+        api_key = os.getenv(_API_KEY_ENV)
+        if not api_key:
+            raise RuntimeError(f"Missing API key environment variable: {_API_KEY_ENV}")
+        client = OpenAI(api_key=api_key, base_url=_BASE_URL)
 
         messages = [
             {"role": "developer", "content": DEVELOPER_INSTRUCTIONS},
@@ -103,7 +111,6 @@ def parse_availability(message: str) -> list[TimeSlot]:
         response = client.chat.completions.create(
             model=MODEL,
             messages=messages,
-            reasoning_effort="none",
             temperature=0,
             response_format={"type": "json_object"},
         )

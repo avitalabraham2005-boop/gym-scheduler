@@ -1,16 +1,18 @@
-"""רכיב פענוח זמינות מאמנות בשפה טבעית (מימוש דטרמיניסטי מבוסס חוקים).
+"""רכיב פענוח זמינות מאמנות בשפה טבעית עם LLM ו-fallback מבוסס חוקים.
 
 מודול זה מהווה גשר בין טקסט חופשי של מאמנת לבין משבצות זמן מובנות (TimeSlot)
-באמצעות חוקי טקסט בעברית, ללא קריאות חיצוניות ל-OpenAI בשלב זה.
-המימוש של OpenAI נשמר בנפרד בקובץ source/availability_llm.py.
+ומנסה תחילה לפענח את ההודעה באמצעות LLM. במקרה של כשל או פלט ריק,
+הפענוח הדטרמיניסטי בעברית משמש כ-fallback.
 """
 
 import re
 
 try:
     from source.models import DAYS, PARTS_OF_DAY, TimeSlot
+    from source import availability_llm
 except ImportError:
     from models import DAYS, PARTS_OF_DAY, TimeSlot
+    import availability_llm
 
 # תחיליות נפוצות בעברית שעשויות להופיע לפני מילות יום או חלק ביום
 _PREFIX_PATTERN = r"[ובהלמ]*"
@@ -155,15 +157,8 @@ def _find_exception_start(tokens: list[str], start_idx: int) -> int | None:
     return None
 
 
-def parse_availability(message: str) -> list[TimeSlot]:
-    """מפענח הודעת טקסט חופשית של מאמנת לרשימת משבצות זמן (TimeSlot) באמצעות חוקים.
-
-    תומך בין היתר בביטויים:
-    - "ברביעי", "ביום רביעי", "בימים שני ורביעי"
-    - "בבוקר", "בצהריים", "בערב", "בבוקר ובערב"
-    - יום ללא חלק יום -> כל חלקי היום (בוקר, צהריים, ערב)
-    - "כל השבוע" ו-"כל השבוע חוץ מ..."
-    """
+def _parse_availability_rules(message: str) -> list[TimeSlot]:
+    """מפענח הודעת טקסט חופשית באמצעות חוקים דטרמיניסטיים בעברית."""
     if not message or not message.strip():
         return []
 
@@ -181,3 +176,14 @@ def parse_availability(message: str) -> list[TimeSlot]:
         return [slot for slot in all_slots if slot not in excluded]
 
     return _parse_tokens(tokens)
+
+
+def parse_availability(message: str) -> list[TimeSlot]:
+    """מנסה תחילה פענוח LLM, וחוזר לחוקים המקומיים אם הוא נכשל או מחזיר ריק."""
+    try:
+        llm_slots = availability_llm.parse_availability(message)
+    except Exception as exc:
+        print(f"[availability_ai] שגיאת LLM, מעבר לפענוח לפי חוקים: {type(exc).__name__}: {exc}")
+        llm_slots = []
+
+    return llm_slots if llm_slots else _parse_availability_rules(message)
