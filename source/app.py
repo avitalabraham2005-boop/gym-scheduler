@@ -60,6 +60,7 @@ def update_availability(name: str, message: str) -> tuple[str, list[list[str]], 
     5. מחזיר שלישיית ערכים: הודעת סטטוס טקסטואלית, טבלת זמינות מעודכנת, ולוח שיעורים מעודכן.
     """
     slots = availability_ai.parse_availability(message)
+    print(f"[update_availability] מאמנת: {name!r} | הודעה: {message!r} | תוצאת הפענוח: {slots}")
     if not slots:
         status = "לא הצלחתי להבין את ההודעה. נסי לכתוב ימים וחלקי יום, למשל: 'זמינה ברביעי בבוקר ושלישי בערב'."
     else:
